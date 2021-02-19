@@ -1,4 +1,3 @@
-
 ---
 feature: git-fs-fixed-output
 start-date: 2019-10-22
@@ -13,55 +12,113 @@ related-issues: (will contain links to implementation PRs)
 [summary]: #summary
 
 Natively support git tree hashes.
-This opens the door to decoupling the storage layer from the rest of Nix
-That, in turn, opens the door to many other interesting possibilities.
+This fixes an annoying U.X. problem right now, and opens the door to modularizing Nix for better integration with other technologies in the future.
 
 # Motivation
 [motivation]: #motivation
 
-If Nix's implementation and specification were more modular, we could more easily leverage other tools for interesting experiments.
-Thankfully, the nix language is fairly separate from the rest. E.g. GNU Guix had no trouble staring with our daemon.
-But, the storing data and perfoming building is sadly still rather intertwined.
-Performing builds of course is the heart of what Nix does; that part shouldn't be outsourced.
-Storing data, quering remotes for data, and mounting that data in `/nix/store`, however, in principle has nothing to do with the above.
-But the format of store paths, hashing method, and probably a long tail of smaller papercuts make a non-nix-specific implementation of this functionality almost impossible to news.
+## Fixed-output derivation U.X.
 
-We cannot just break all existing store paths, but we can create new opt-in modes of operation that will avoid these Nix-specific choices.
-The most basic store-related functionality Nix has is adding a new store entry, closely followed by fixed-output derivations.
-These are thus good place to start creating an off-the-shelf mode.
-Such added store paths and built fixed output derivation builds are content addressed, with the content just being the files themselves and no Nix-specific metadata.
+As [RFC #84](https://github.com/NixOS/rfcs/pull/84) points out, we currently have a very annoying user experience updating sources.
+It's very easy to update the version control system's identifier, but fail to update the nar hash.
+Nix, will then see that the resulting fixed-output derivation has a hash of data we already have, and just use that data instead of downloading fresh.
 
-Git blob and tree hashes are well suited to this task.
-Git is extremely prevalent; there might be more git hashed data than anything but BitTorrent.
-Unlike BitTorrent, git is much better suited to incrementally modified data, as the filesystem is hashes recursively, which allows direct reuse of unmodified subtrees.
-This matches our use case where both source code and builds me change incrementally.
-Git is thus a better fit than BitTorrent.
-While this proposal doesn't leverage the incrementality directly, ideas in the future work section do.
+But the fix proposed in RFC 84 is to effectively cancel out the fixed-output derivation semantics by stuffing an input address in the name of a derivation.
+This is bad:
+
+- Changes to *how* we obtain the source cause needless rebuilds
+
+- Changes to *whence* we obtain the source cause needles rebuilds
+
+Still we need a solution to this long-standing foot-gun.
+This can be it.
+Not only does having 1 hash remove the possibility hashes being out-of-sync,
+having one hash is just *plain easier*.
+
+## Better integration with other tools
+
+As Eeclo says:
+
+> it goes the wrong way, namely away from content-addressability" (In CA Nix, ideally we wouldn't have a name attribute...)
+
+It's a bit hard to explain why content-addressing is so great, but one aspect is that it's a concept shared by a number of tools, including ever popular Git.
+I've long thought while the Nix community should never give up the important and *necessary* ways we do things differently, there are a number of accidental ways we are bespoke to no benefit:
+
+ - We hash file system data in a bespoke way
+
+ - We store data in a bespoke way
+
+ - We exchange data between stores in a bespoke way
+
+ - We sandbox data
+
+I think one of the best ways to promote Nix is to collaborate with other parties.
+Making these areas less bespoke is a great way to "compromise" when integrating Nix, *without compromising any of our core principles*.
+
+Finally, it should be to our benefit even beyond growing the community in that the division of the labor with good abstractions (rather than Conway's law tragic interfaces) deduplicates work to everyone more.
+(This is why modality is essential for free software.)
 
 # Detailed design
 [design]: #detailed-design
 
-1. Add a third way way of agglomerating data in addition to "flat" and "recursive": "git-fs".
-   This is git blobs hashing method for files, and git tree hashing method for directories.
+1. Add a third way way of agglomerating data in addition to "flat" and "recursive": "git".
+   This is:
+     - git blobs hashing method for files.
+     - git tree hashing method for directories.
+     - special directory entry for blobs representing symlinks.
    Submodules and other exotic named entrees in trees are prohibited.
 
 2. Only support the SHA1 hashing algorithm with "git-fs".
+   As git adopts better hashing algorithms, so can we.
 
-3. Store paths hashed according to "git-fs" do not have names, but are just the hash.
+4. Fixed-output derivations may use "git-fs" + "sha-1", too.
 
-4. Fixed-output derivations may use "git-fs" + "sha-1".
-   The derivation still has a name, but the resulting build won't per the above.
-
-5. For the time being, still transmit store entries with nar files.
-   Of course, the hash cannot be verified by hashing the nar byte for byte.
+5. For the time being:
+   - still transmit store entries with nar files.
+   - still always calculate Nar hash for local store entries.
+   Nix already works well with a normative hash + nar hash.
 
 # Drawbacks
 [drawbacks]: #drawbacks
 
-The proposal makes Nix bigger with no immediate benefit.
+- Data that isn't content-addressed doesn't benefit.
+
+  Of course, once we download data, we can hash it however we like,
+  but if it there isn't a git hash to use in the URL, etc. we are back where we started with information that can drift out of sync.
+
+  It is my contention that it's best to just live with this.
+  The most frequently changing sources tend to be git, due to the tenancy for project development to die down, and git's complete dominance in popularity in recent years.
+  Also, the new users mostly likely to be caught unaware by the bad U.X. are probably working with their own code.
+  For the same statistical reasons, that is also extra likely to be in git.
+
+  Data the only comes in tarballs or compressed, and then is hashed as-is, poses a number of difficulties such as the ones described at the bottom of https://www.tweag.io/blog/2020-06-18-software-heritage/.
+  Not helping that legacy path as much could help incite people to move away from it, which I think is a good thing.
+
+- SHA-1 is a bad hash algorithm.
+
+  My view is that:
+
+  - It's worth using it temporarily to foster collaboration.
+    Git is already migrating away from SHA-1.
+    We can deprecate it accordingly.
+
+  - Working with the git hash migration is a good exercise in crypto-agility we would miss if we waited.
+
+  - When we rehash git data *defined* by SHA-1, the improvements are somewhat nebulous anyways.
+
+- Git tree objects don't do chunking / fancy dedup / etc.
+
+  But, Git is currently the preeminent way of content-addressing source code.
+  It is the basis behind https://docs.softwareheritage.org/devel/swh-model/persistent-identifiers.html too.
+  It is my view that collaboration, and not https://xkcd.com/927/, is the best way.
+  Supporting git can be the beginning of supporting more formats, if one becomes popular.
 
 # Alternatives
 [alternatives]: #alternatives
+
+- Do nothing
+
+- [RFC #84](https://github.com/NixOS/rfcs/pull/84)
 
 # Unresolved questions
 [unresolved]: #unresolved-questions
@@ -75,43 +132,6 @@ The proposal makes Nix bigger with no immediate benefit.
 # Future work
 [future]: #future-work
 
-Here's the fun part!
-There are ton of ideas to explore that all become more feasible with this change in place.
-I'll try to detail some of them
-
-## Data Exchange
-
-HTTP is not an efficient way to multicast data.
-IPFS or something similar has all the tools to do a much better job, side-stepping the far more difficult task traditional network filesystems face.
-While we cannot predict what technology will "win", we can be pretty sure they will support git since so much git data already exists and is well suited to bootstrap the ecosystem.
-This was the original use-case for [Nix issue #1006], where I originally proposed this.
-
-## Deduplication
-
-For storage, we support deduplicating with hardlinks, but this still wastes metadata when whole trees are duplicated.
-Git hashing makes it O(1) to compare subtrees, which is essential to doing this efficiently on-line.
-To actually do it though, I'm afraid we'd need some sort of custom filesystem (including FUSE), as the hardlink restriction is OS-imposed.
-For this reason, it's not part of the proposal proper.
-
-## Projecting store paths
-
-Often, a derivation only depends on a subtree of store path.
-Unfortunately, due to the way Nix works today, if only the rest of that store path changes, the build will still be invalidated.
-To efficiently do the deduplication mentioned above, we need an index of all tree hashes recursively decomposed.
-At that point, and given we have a custom filesystem anyways, we might as well expose all these subtrees as store paths in their own right.
-We can have a special derivation to project a subtree from a store path which can work by copying "recursive", but be optimized for "git-fs".
-
-## Integration with Intentional Store
-
-The intentional store in a nutshell rewrites drvs so that all their dependencies are fixed-output derivations.
-We are just introducing a new type of fixed output derivation, so that shouldn't be problem.
-This also provides proper formalism for the special projection derivation mention above, as that derivation must "lose" it's connection to the original drv if it is to achieve its purpose of avoiding unecessary rebuilds.
-
-This is a point of complication, however, self-references.
-In short, many builds today contain their own path, and thus are unable to be content-addressed.
-To work around that, there is a rewriting step to break the loop with self-references.
-Once we expose "git-fs" trees as compositions of other "git-fs" builds, we no longer have a "self", and must deal with larger cycles.
-There's a couple ways around this; I think it's fine as a first step to punt.
-We can assert that certain derivations must not contain any cycles and limit "git-fs" hashing to such derivations.
-
-[Nix issue #1006]: https://github.com/NixOS/nix/issues/1006
+Actually integrate with those other technologies!
+Full disclosure, this would help immensely with the integration with IPFS, which I have worked on.
+But I've tried to come up "proper-noun-neutral" language to emphasize I don't just care about this because of the specific projects I work on.
