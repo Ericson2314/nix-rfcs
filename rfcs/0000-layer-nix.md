@@ -128,9 +128,9 @@ But of course, it can't be argued that the assumption that the use Nixpkgs/stden
 Likewise, there was a clear need to be able to both better debug Nix derivations and get ad-hoc shells (rather than statefully use e.g. `nix-env`).
 `nix-shell` has been quite useful and popular in the years since.
 Still, it could be argued that we should have made a `nixpkgs-shell` that wrapped the underlying `nix-shell`, adding the `source $stdenv/setup`.
-Would it have worked? 
+Would it have worked?
 Sure.
-Would it have been as accessible and discoverable to users? 
+Would it have been as accessible and discoverable to users?
 Arguable either way.
 
 #### `builtins.fetch*`
@@ -218,7 +218,7 @@ This, however, would be just a token gesture to the first design school / anti-f
 While there is no reason we can't have multiple versions of Nix indefinitely, the idea is also to have a fairer contest for what future of Nix the community preserves.
 Flakes cannot put its best foot forward while still being marked experimental of course, but non-Flakes also can't while they are largely confined to a "legacy mode", or require extra hoops like `--expr`.
 Remember, whether or not we do Flakes, we still mostly all want
- 
+
  - A new, uniform CLI
  - Channels abolished (N.B. Anti-Flakers don't think channels necessarily need to be *replaced*, let alone replaced with something else in Nix itself.)
  - Unambiguous improvements to existing functionality like pure evaluation.
@@ -259,7 +259,63 @@ The current test suite uses eval for most things, and in fact enables Flakes glo
 That is unacceptable while flakes is an experimental feature, but not good practice anyways.
 We should instead break up the tests so that each version of Nix is well tested, and each cumulative version of Nix can pass the test suites of the Nixes it subsumes.
 
-This is good work we should do regardless of this RFC, because it combines the specificity of unit tests with the real-world-ness of integration tests.
+### Manual
+
+Each Nix should get its own manual.
+Of course the manuals can share sections, so we aren't duplicating work.
+
+### Website
+
+All versions of Nix should be presented for download on the website.
+This should be just like how Plasma, Gnome, and headless installer images for NixOS are all offered.
+
+## Stabilization
+
+With the split, I and the other anti-Flakers will be a lot less anxious about the looming stabilization of Flakes.
+So we could go straight away to stabilizing that, without acrimony.
+However, I think with the split we have an opportunity to do better.
+
+The new CLI is also in need of stabilization, but so long as it and Flakes are quite bound together, it is hard to do so.
+With this layering, all of the sudden all of these other concerns CLI concerns are back ready for discussion, without it devolving into a big flame war.
+
+Questions like
+
+- Logging
+- store paths at end of build?
+- Should commands like `show-derivation` should use `--json` by default
+- Flat vs hierarchical commands
+
+all deserve some discussion, because we really should be looking to get rid of the old CLI soon that confuses so many people.
+
+With the splitting we stabilize the general feel of the CLI, along with the exact spec for the more minimal Nixes, before we stabilize Flakes.
+We should do that first to bring the community back together for some healthier decisions making!
+The layering will make clear that the results of the first around of stabilization should not
+
+# Examples and Interactions
+[examples-and-interactions]: #examples-and-interactions
+
+## No schism!
+
+The most important effect is that the community stays together, with no one feeling their vision for the future of Nix has been relegated to a dusty corner.
+All else is secondary.
+
+## Maximal Nix unlike today
+
+I cannot emphasize this enough, but the interface of maximal store+exprs+flakes Nix remains *exactly* like today.
+In particular, lower level commands can be used with higher level "installables" (arguments), so e.g.
+```
+nix store show-derivation flake#bar
+```
+will still work.
+
+## Good tasks anyways!
+
+Lots of the plan above I think is good work we should be doing anyways, regardless of whether we split Nix.
+If you believe this, then the "cost" of this RFC is a lot less.
+
+### Tests
+
+Splitting the test suite per natural layer of the implementation is good work because it combines the specificity of unit tests with the real-world-ness of integration tests.
 "entire kitchen sink" tests make it harder to narrow down root causes of failures.
 
 Also note, to be able to test the store-only Nix, we will probably want a "JSON to drv" command that is the opposite of `show-derivation` to make derivations more easily.
@@ -267,51 +323,41 @@ This is also a good idea with or without PR, because for https://github.com/NixO
 
 ### Manual
 
-Each Nix should get its own manual.
-Of course the manuals can share sections, so we aren't duplicating work.
-
-Again, I think this will mostly involved good work we should do either way.
-The current manual I think jumps across layer of abstractions way to much.
+The current manual I believe jumps across layer of abstractions way to much.
 A so-layered manual would complement the "bottom up" approach of Nix pills:
 
  - The store-only Nix manual would lay out all the core concepts.
    We could even rewrite the earlier Nix pills to use the "JSON to drv" command we will likely need for the tests.
    While not very ergonomic, this Nix would be a crucial tool for anyone trying to deeply understand the foundation.
-   
- - The flake-only Nix manual conversely would be *more free* to gloss over how things work underneath the hood,
-   Focusing on idiomatic usage of Nix, and trying to get common problems done without needing to understand everything that's going on.
-   
-This 
 
-# Examples and Interactions
-[examples-and-interactions]: #examples-and-interactions
+ - The store+exprs Nix manual can spend some time introducing functional programming, laziness, in general.
+   `nix repl` and various debugging techniques should get lots of attention.
 
-## Good tasks anyways!
+ - The store+exprs+flakes Nix manual would be *more free* than to gloss over how things work underneath the hood,
+   It could focusing on idiomatic usage of Nix, and trying to get common problems done without needing to understand everything that's going on.
 
-Lots of the stuff above I think is good work we should be doing anyways.
-If you believe this, then the "cost" of this RFC is a lot less.
+Based on the perennial feedback Nix threads on e.g. Hacker news receive, I think this would *hugely* popular.
+Some folks just try to do things, and then get hopefully confused.
+Other folks try to learn what's going, and find the details and core concepts maddeningly undocumented.
+The 3 manuals correspond to different learning styles, and a different familiarity with various things (sysadmin stuff vs functional programming, perhaps.)
+People will self-select, and end up a lot happier.
 
-- `nix-daemon` will be a separate executable that only links the nix libraries it needs.
-  \[At this time, those libraries are `libnixutil`, `libnixstore`, and `libnixrust`, but this is subject to change.\]
+## Security
 
-- `nix-daemon` should never need to understand the expression language and depend  `libnixexpr`.
+The daemon is a privileged process.
+Even if with upcoming changes it shouldn't need root, it does tasks like administrating OS sandboxes correctly.
 
-With flakes and other development, we are moving towards a more "batteries included" Nix command line.
-We don't want any of those features in the daemon, however, because the daemon is a special trusted process that we should strive to keep as simple as possible.
-\[This is comparable to a compilation pipeline, with a concise intermediate representation that nicer user-facing features "desugar" into.\]
+## Collaboration
 
-There are many things we could do about this, but I mainly want to establish some rough consensus around the problem while taking a small step to signal that consensus.
-Originally, each Nix command was its own executable, but then we combined them into one executable.
-I think this is fine for the main user-facing commands, but not good for the daemon.
+I am a big believer in there being social ramifications of layering.
+Specifically, with the layers of Nix taking more of an identity and *life* over their own, there is more chance to onboard people are who are interested in specific layers of the project.
+Layers allow more people to work in parallel, while at the same time setting clear boundaries on what each layer is *for*, and thus what sorts of project in scope and out of scope.
 
-Finally, it's probably best not to give the daemon---a long lived process running with elevated privileges---access to tons of dead code.
-All of the other commands entry points and library functions they use, such as the Nix evaluator, are in the same process even though the daemon should never need to use them.
-C++ doesn't exactly prevent memory errors, and that dead code is just more fodder to be used in some low-level attack.
-There are other solutions to this in the long term, but this is the easiest solution in the short term.
+Nix itself has long been far and away the least community-driven project in the NixOS ecosystem.
+As the beating heart of it all, I think that is to some degree inevitable.
+But, with layering I think will finally be able to broaden community involvement without Eelco feeling lake it's going off the rails.
 
-
-I certainly hope there are no interactions!
-One of the bad things we should seek to prevent with this is the daemon unintentionally growing dependencies on more of the code base.
+To repeat the big idea behind all of this, layering means factions don't need to fight to stay afloat, less confrontational factions makes for healthy pluralism, and healthy pluralism makes for wider collaboration.
 
 # Drawbacks
 [drawbacks]: #drawbacks
@@ -349,6 +395,70 @@ If other Flakes depend on it, but it doesn't depend Flakes, there is no issue.
 # Future work
 [future]: #future-work
 
-I think most people for this will have future plans they wish to persue in the name of modularity.
-But I don't expect everyone to agree on what exactly those plans should be.
-The point of this small step is to punt on all that for now.
+Here comes the fun part!
+
+While preventing a further fracturing of the community is and remains the most important goal,
+we can turn the argument around and think about what schism have *already* occurred.
+Tvix and GUix, as mentioned in the front-end are good places to begin.
+
+## Tvix
+
+Tvix is a basically a focus on refining all the pre-flake parts of Nix -- it is no coincidence it is a fork of 2.3, more or less.
+Tvix should do basically what store+expr non-flake Nix should, and wants to be a drop-in replacement for that (and what's needed for Nixpkgs, which may or may not eventually exceed that).
+By splitting out more minimal Nixes, we formalize exactly what sort of interface that is, not as a historical snapshot "2.3", but as a *living* standard.
+
+Frankly I am curious whether Tvix would have happened had we had this exposed, advertised layering from the get-go.
+But, trying to undo history I think is not the point.
+Tvix can have a relationship with store+expr Nix a lot like that between NeoVim and Vim.
+Especially the ideas of trying to work with more off the shelf components (e.g. containerization standards, RPC protocols) I think have the potential to be welcomed back over here in the original project.
+
+## Guix
+
+Guix is a bit different, in that they don't want to share any code with us on principle as all the C++ should be replaced Guile.
+In some respects, they are the most "against layering" because the whole point is the synergy between Guile as the implementation language, package planning language, and plan executing language.
+In other words, where we use C++, Nix, and Bash, they use Guile, Guile, and Guile.
+
+Still, I think there is potential for collaboration.
+My long term vision for the store layer is that I want to see it deployed in every build firm and compute cluster, replacing the likes of Slurm, and sold as a service by every cloud provider.
+The "derivation language" should be the standard language for batch jobs, full stop.
+
+Guix is, if anything, more interested in HPC than we are.
+See https://hpc.guix.info/ for example.
+Insofar as we share the same goals, and same basic message about reproducibility, maintaining a common, living standard is to both our benefits so Nix and Guix users can together lobby cluster admins for one jobs-processing deployment.
+
+There would still be separate Nix and Guix implementation to this common interface, perhaps with their own unstandardized extensions.
+MPI and OpenMP are both widely-used interfaces with multiple implementation in wide use, and so I consider this sort of standards-writing coalition building a proven way to get things done.
+
+I should say that I first reached out to some Guix folks roughly a year back about this sort of standardization in the context of the CA work.
+They weren't super interested at the time, rightly calling me out on making an overture on shared design/standardization after the CA experiment was mostly implemented and so things were set in clay, if not stone, on our end.
+Still, implementing the layering is a more concrete gesture towards collaboration than just sending an email.
+I maintain optimism it could go better a second time.
+
+## Other frontends
+
+There are lot of folks interested in trying out other "frontends" to Nix.
+[Dhall](https://dhall-lang.org/)'s targeting of Nix is the most notable example, but there are others.
+Those projects would get a big lift from a store-only Nix, as it is basically a declaration that derivation language intends to be stable and amendable to outside consumption.
+
+## Final thoughts
+
+It would be easy to imagine splitting this RFC into two: one for store-only Nix, and one for eval nix without flakes.
+The store layer, merely by being lower, offers a wider space of possibilities yet to be explored on top, and that is fun and exciting.
+But I have chosen to couple them together, to couple preventing bad things and unlocking good things, because it is fundamentally the same process for both splits.
+
+Similarly, the possibilities of collaboration with off-shots of Nix that already happened are easier to imagine,
+because of the other projects are concrete things that actually exist.
+Still, it is much easier to maintain contact with projects that fork than try to reestablish it later.
+If we do have a Flakes schism, maybe one side will whither and disperse, but maybe we will end up with two separate self-contained communities.
+Then we will be in the *exact* same position we are in today with respect to projects like Tvix and Guix.
+
+With the layerism and pluralism plan, we should be able to have the best of both worlds, where projects are free to try their own things, but we always remain on friendly and collaborative terms.
+Rather than a single Nix community, there should be concentric communities around each layer.
+As the layers accumulate in one direction, the communities should accumulate in the other.
+
+The world of open source software often seems to fragment and churn as rapidly as it grows, with all sorts of fads coming and going on one hand, and yet ever accumulation of the cruft of past ideas deep in the bowels of dependency graphs.
+Yet in recent years, there is all sorts of interest in reproducibility, software "supply chains", functional programming, and whatnot.
+We can be one idiosyncratic thing, and maybe achieve permanent dominance.
+Or we can be another fad -- people often say things like "Nix is the good idea that something else eventually will make stick".
+Layering is a defense against being to rigidly any one thing, while also a chance to build coalitions with like-minded projects, including those that would only come into being because the layering exists.
+We are at the juncture where it should be both the safest and boldest step forward.
