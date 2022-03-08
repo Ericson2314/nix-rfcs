@@ -37,7 +37,7 @@ A rough summary is Flakes themselves are not the problem, just the manner in whi
 Reduced even further it's this: our disagreements are fundamentally social, not technical.
 
 While certainly are parts that process that could have gone better, and perhaps those parts caused the most pain and acrimony, I don't think that is the heart of the matter.
-I was in those RFC meetings, and many others with Eelco and the other participants, and I don't* think had the RFC process been more mature we could have set towards a final design we basically all agreed upon.
+I was in those RFC meetings, and many others with Eelco and the other participants, and I *don't* think had the RFC process been more mature we could have set towards a final design we basically all agreed upon.
 At the root of all of this, I think there *is* a fundamental technical disagreement and irreconcilable difference in design philosophies.
 This the core point of contention I don't think has gotten enough attention, and I think bringing it front and center to discuss is the key to getting us out of our current quagmire.
 
@@ -55,7 +55,7 @@ I agree with both of those!
 To me however, the main less is to embrace pluralism and disagreement, and abandon any notion of complete community unity or even consensus on all major points.
 If we give up on a single `/nix/store/...-nix/bin/nix` making everyone happy, we take a great weight off our shoulders.
 
-## A brief history of Nix
+## A brief history of Nix, and two schools of design
 
 So, what actually is this big central design disagreement?
 I'll get there in just a the a moment, but let me lay out the brief history.
@@ -64,17 +64,237 @@ I think a lot of Nix's "old guard" was drawn to the project because it seemed to
 These values came from Nix's origins in the functional programming language community, and were carried over from that community's acts of defining itself in opposition to what we might call the "computing mainstream".
 Functional programming has become less obscure, and Nix also, and both have happened because neither community actually wants to put up walls.
 Importantly, that means over time Nix has had more users *and core contributors* who wouldn't consider themselves "from" functional programming, functional programming die-hards, etc.
-Full disclosure, I definitely consider myself both --- and so its very I don't want to come off as minimizing the contributions of those that don't!
+(Full disclosure, I definitely consider myself both --- and so its very I don't want to come off as minimizing the contributions of those that don't!)
 
-I am not sure whether Eelco considered himself at any point over Nix's almost 20 year history, but this is besides the point.
+### The functional programming language school
+
+I think I can best explain this school of design with some famous precepts.
+
+> Programming languages should be designed not by piling feature on top of feature, but by removing the weaknesses and restrictions that make additional features appear necessary.
+
+> Composition over configuration
+
+> Avoid success at all costs.
+
+I could write a lot more on these, but the basic message is a "tortoise and hair" like one.
+
+In the short term, it is very tempting to pile another feature or configuration option on top.
+Brand new features mean no risk of breakage, configuration can likewise by defaulted so one need care.
+And yes, in that short term this may be the quickest path to success.
+
+But in the long term, features and configurations pile up into ton of complexity, and *still* a mere still a mere simulacrum of flexibility.
+Shifting tastes may also make certain more opinionated solutions loose their luster.
+There is a general sense that if entropy is not continually beaten back, it will win in the code base.
+
+To the critics of this approach it must be admitted that a cogent calculation of short term vs long term needs isn't always even the point.
+There is no lying that there contrarian fun was found in being the perennial tortoise, making short term self-sabotaging actions in the name of long term mores.
+The pursuit of long term good design can become the goal in and of itself, and the relishing whatever asceticism is needed to stick to that path the way to demonstrate virtue.
+
+Nix excelled at hitting many of these points.
+The strict separation between the drv language and the Nix expression language stands in stark contrast to the Makes, and Bazels of the world.
+The Nix expression language also has a minimum of extra features, "beating Scheme at it's own game" one could say (outside the syntax itself, at least).
+Of course, going for purity long before OS sandboxing became cool was a *serious* up front cost, as we invariably were using software in ways its original authors never anticipated.
+
+One last precept, taking from the Eelco's PhD dissertation (Thanks Tom Berek for finding):
+
+> Nix is *policy-free*;
+> it provides *mechanisms* to implement various deployment policies, but does not enforce a specific one.
+> Some policies described in this thesis are *channels* (in push and pull variants), *one-click installations*, and *pure source deployments*.
+
+(https://edolstra.github.io/pubs/phd-thesis.pdf page 15, emphasis original)
+
+### Changing winds
+
+I am not sure to what extent Eelco considered himself an adherent to this school over Nix's almost 20 year history, but this is besides the point.
+
 What happened is that the Nix community experienced certain growing pains --- completely understandable for any rapidly growing community but at the same time always a good chance for self reflection not something which should be shrugged off.
-Long before Flakes, this led Eelco to consider issues of community cohesiveness and new user accessibility.
+A blank `default.nix` and the minimalism of the Nix expression language make it highly unclear *what* they ought to do.
+"Lambda calculus --- go wild" can make for quite the writer's block!
+In practice, the central position of Nixpkgs imposed some order in the community.
+But still, different downstream projects often developed completely different idioms.
 
-, but not something which just because its inevitability shouldn't be
+Talking to Eelco over the years, I get a sense that he has increasingly seen Nix's minimalism and modularity as the root cause of these issues.
+Where many different idioms were equally good, the project could step in and anoint one the winner, and the community could rally around it.
+Where the existing layering prevented a solution, the layering could be violated to do that solution anyways.
 
-### The functional programming language school --- asceticism
+This think did lead to Flakes, but also two a few things before Flakes that I think are worthwhile to bring up.
 
-### The product school --- feature completeness
+#### `nix-shell`
+
+Firstly, there is good old `nix-shell`, which dates back (under a different name) to https://github.com/nixos/nix/commit/7f38087f35e6f74a73bfdb28da8acd8930565d51 in 2012.
+From this first commit, it assumed a Nixpkgs-made derivation, doing `source $stdenv/setup`.
+From the PL school's perspective, this is a gross layer violation --- derivations need not have an environment variable called `stdenv`! --- and something to be avoided.
+But of course, it can't be argued that the assumption that the use Nixpkgs/stdenv/`mkDerivation` isn't highly likely.
+Likewise, there was a clear need to be able to both better debug Nix derivations and get ad-hoc shells (rather than statefully use e.g. `nix-env`).
+`nix-shell` has been quite useful and popular in the years since.
+Still, it could be argued that we should have made a `nixpkgs-shell` that wrapped the underlying `nix-shell`, adding the `source $stdenv/setup`.
+Would it have worked? 
+Sure.
+Would it have been as accessible and discoverable to users? 
+Arguable either way.
+
+#### `builtins.fetch*`
+
+More recently there are the `builtins.fetch*` family of prim-ops.
+It is well known that fixed output-derivations are hard to use in many ways:
+
+ - Sometimes during quick development you just want to impurely fetch latest version, just like `./...` impurely grabs the latest version on disk. This is not possible.
+ - When the fetching system also uses hashes (e.g. Git), there are two sets of hashes that must be kept in sync.
+ - Forgetting to update the Nix hash "silently" leads to cache hits without any indication the user might have made a mistake.
+ - Private sources / authentication is super harder, especially since a safe way to keep secrets in the Nix store hasn't yet been devised.
+ - When fetching from version control, it can be useful to repo-specific caches that contain more than just the contents of the last version fetched.
+
+From the near-beginning there was a "corepkg" fetchurl useful for bootstrapping that shipped with Nix.
+But this just existed for bootstrapping, and just made a plain old fixed output derivation.
+
+In 2015, Eelco added `builtins.fetchurl` and `builtins.fetchTarball` in https://github.com/nixos/nix/commit/000b5a000f8ceef9d79c7e8a9835fde9a98c367f .
+In their first incarnation, they were quite simple.
+Their main purpose was just the first problem above, which they solved by fetching without sandboxing at Eval time.
+
+This was a small change, but it still was a layer violation, in that a specific sort of fetching was now given special support.
+A more general mechanism, `builtins.exec` was added in https://github.com/nixos/nix/commit/0bb8db257d98a32abde759f4d07d28b5178bd3bf whereby *arbitrary code execution* could be done at eval time.
+This never caught on, being the mother of all impurities and frankly a bit terrifying.
+A trade of security for layering is not one I would expect most people to make, but I suppose `builtins.exec` did at least serve to emphasize the layering point, and remind us we could keep on searching for better solutions.
+
+Since then, `builtins.fetchurl` and `builtins.fetchTarball` have grown into the "libfetchers" library. and `builtins.fetch*` suite of builtins.
+(The library is a also one of the backbones of Flakes.)
+Certainly they are used by many people and work around many of the issues above.
+But the also are a *dramatic* departure from the layering and policy-freeness of before --- on `master` as I write this `sloc` tells me `libfetchers` is 1908 lines of non-comment, non-blank code, and that code little *but* policy.
+The long debates around, e.g., how git submodules should be fetched show that not all the policy is "obvious" or "clearly what one would want" either.
+
+These `builtins` were never as controversial as Flakes, but in hindsight I think this is really when the shift in approach got going.
+
+### The product school --- feature richness
+
+At this point, I think this is a good time to characterize the school of design Nix now subscribes to.
+
+> Batteries included
+
+The metaphor is that an electrical device without batteries is useless --- and that buying such a gizmo only to find it didn't come with the batteries after you left the store can be quite disappointing.
+Applied to Nix there is idea that trying out Nix only to find you need some other tool, be it a `nixpkgs-shell` as described above, `niv`, fetching catch system for `builtins.exec`, etc. will frustrate new years, who want an "integrated" rather than "cobbled together" user interface.
+
+In particular, I have personally heard Eelco say many times he doesn't flakes to be some sort of extension, or separate tool.
+He wants flakes to be *in* Nix, in the single down, interacted with the single `nix` binary, so they same completely "first class".
+
+Speaking of new years, While neither school of design of design would claim its ambivalent to new users, this school is adamant it cares the most about them, and the alternative demonstrates the biases of experts in pursuing principle that mainly benefit them, without considering the costs that they mainly don't face.
+This sort of argument I have seen many, many times, not just with Nix.
+I don't at this point many newer users of Nix have never known a world without Flakes, and are quite fond of them.
+
+> Convention over configuration
+
+I honestly don't know if anyone but the Rails people use this, but it seems relevant.
+The idea is that there are certain conventional ways to do things, that might be better supported, but nothing is preventing on from going off the beaten path if they want.
+Many times Eelco and others have pointed out that new Nix does not *force* the use of Flakes, that the old `nix-*` commands are not about to be deleted, etc.
+Still, there is a no doubt some social engineering going on (I do not use that phrase nefariously!) in that Flakes get special support.
+
+- Features like pure eval + eval caching could work without Flakes, but don't.
+  (Caching depends on pure eval, but pure eval doesn't inherently depend on Flakes, similar to the "restricted eval" that came before it.)
+
+- Idioms like `packages.${system}` get special CLI support.
+  No general mechanism for other idioms to do "plugable" CLI support of this nature.
+
+Certainly Eelco has said trying to design with the general, Flake agnostic version can seem like an extra chore that he doesn't feel very motivated to do.
+The point of conventions are to solve problems for users, but also to help shepherd the community into using standard idioms.
+From the vantage point of the second, generalizing features to be flake-agnostic can be **actively harmful* not just effort without benefit, because it undermines the strength of the convention.
+
+## What to Do? Multiple Nixes
+
+Hopefully it is clear now, that I consider these two approaches *irreconcilable*.
+Any attempt to split Flakes into a separate tool would undermine the "single integrated tool" goal of the second approach.
+Keeping Flakes as is, with a promise that you don't have to use it, undermines the first approach because layer violations are still occurring, and Flakes are still "biased" over other approaches, when the lower layers ought not meddle with what upper layer "wins".
+
+So what can we do, other choosing a winner and either stabilizing or abandoning Flakes entirely, and risking schism?
+Have multiple Nixes!
+Before one scoffs, "isn't that just a fork -- in other words a schism?", note that this is very specific proposal.
+Duplicating code across forks leads to a tragic waste of resources, but we don't need to duplicate code to have multiple Nixes.
+The key insight is while "Nix within Flakes" must be whole self-contained tool to match Eelco's vision and the second school of design, it can still be *implemented* with good layering.
+And indeed, Eelco has so far been fine merging invasive PRs of mine like https://github.com/NixOS/nix/pull/4114 and https://github.com/NixOS/nix/pull/6188 store that separate concerns.
+
+The CLI logic is fairly modular already, and it is not hard to acknowledge it so that subsets of the total functionality can each have their own combined Nix.
+Each of these Nixes is *cumulative*, so that the functionality in the more minimal ones is still exposed in the later ones, and no one need install more than one of the Nixes.
+
+Merely having the multiple exes exist in tree is enough to allow CI to "catch" any new layer violations, so we could just keep the more minimal Nixes as glorified tests.
+This, however, would be just a token gesture to the first design school / anti-flakes camp.
+While there is no reason we can't have multiple versions of Nix indefinitely, the idea is also to have a fairer contest for what future of Nix the community preserves.
+Flakes cannot put its best foot forward while still being marked experimental of course, but non-Flakes also can't while they are largely confined to a "legacy mode", or require extra hoops like `--expr`.
+Remember, whether or not we do Flakes, we still mostly all want
+ 
+ - A new, uniform CLI
+ - Channels abolished (N.B. Anti-Flakers don't think channels necessarily need to be *replaced*, let alone replaced with something else in Nix itself.)
+ - Unambiguous improvements to existing functionality like pure evaluation.
+
+To have a fair referendum, it is important the multiple Nixes are presented as genuine possible futures*, not just compatibility support for the past.
+Only then can both factions feel their visions are respected, and schism averted.
+
+# Detailed design
+[design]: #detailed-design
+
+## The first split
+
+First split? Huh?
+Well, I expect the very notion that we can maintain multiple Nixes without more ongoing effort to be controversial.
+Flakes is currently entangled with the other code in `libexprs` and `libfetchers`, and separating it would take some time.
+Instead, we can start make the first cut above `libstore`.
+
+`libstore` is the most natural division point in the code today.
+Plenty of commands like `nix daemon`, `nix log`, and the `nix store` sub-commands don't care about evaluation at all.
+In https://github.com/NixOS/nix/compare/master...obsidiansystems:layer-nix (TODO open draft PR!), I have split out a store-only binary with some of these commands.
+We will finish it off with as many commands as are reasonable to include, and merge it.
+
+## The second split
+
+Of course, the schism that took us here is flakes, and so once the splitting approach is proven, we should separate Flakes from `libexper` and `libfetchers` into a `libflakes`, and make another Nix that just links the former two.
+While splitting those libraries will be some work, the CLI split should be very rote an easy after with the already-proven approach.
+
+## Obligations per split
+
+### CI
+
+Every more minimal version of Nix should be built and tested in CI runs, for release and PRs.
+Less CI than full maximal Nix makes this an unfair contest, and defeats the main goal of trying to prevent a schism.
+
+### Tests
+
+The current test suite uses eval for most things, and in fact enables Flakes globally despite it being experimental.
+That is unacceptable while flakes is an experimental feature, but not good practice anyways.
+We should instead break up the tests so that each version of Nix is well tested, and each cumulative version of Nix can pass the test suites of the Nixes it subsumes.
+
+This is good work we should do regardless of this RFC, because it combines the specificity of unit tests with the real-world-ness of integration tests.
+"entire kitchen sink" tests make it harder to narrow down root causes of failures.
+
+Also note, to be able to test the store-only Nix, we will probably want a "JSON to drv" command that is the opposite of `show-derivation` to make derivations more easily.
+This is also a good idea with or without PR, because for https://github.com/NixOS/rfcs/pull/92 we want to allow external programs to make derivations efficiently and ergonomically.
+
+### Manual
+
+Each Nix should get its own manual.
+Of course the manuals can share sections, so we aren't duplicating work.
+
+Again, I think this will mostly involved good work we should do either way.
+The current manual I think jumps across layer of abstractions way to much.
+A so-layered manual would complement the "bottom up" approach of Nix pills:
+
+ - The store-only Nix manual would lay out all the core concepts.
+   We could even rewrite the earlier Nix pills to use the "JSON to drv" command we will likely need for the tests.
+   While not very ergonomic, this Nix would be a crucial tool for anyone trying to deeply understand the foundation.
+   
+ - The flake-only Nix manual conversely would be *more free* to gloss over how things work underneath the hood,
+   Focusing on idiomatic usage of Nix, and trying to get common problems done without needing to understand everything that's going on.
+   
+This 
+
+# Examples and Interactions
+[examples-and-interactions]: #examples-and-interactions
+
+## Good tasks anyways!
+
+Lots of the stuff above I think is good work we should be doing anyways.
+If you believe this, then the "cost" of this RFC is a lot less.
+
+- `nix-daemon` will be a separate executable that only links the nix libraries it needs.
+  \[At this time, those libraries are `libnixutil`, `libnixstore`, and `libnixrust`, but this is subject to change.\]
+
+- `nix-daemon` should never need to understand the expression language and depend  `libnixexpr`.
 
 With flakes and other development, we are moving towards a more "batteries included" Nix command line.
 We don't want any of those features in the daemon, however, because the daemon is a special trusted process that we should strive to keep as simple as possible.
@@ -89,16 +309,6 @@ All of the other commands entry points and library functions they use, such as t
 C++ doesn't exactly prevent memory errors, and that dead code is just more fodder to be used in some low-level attack.
 There are other solutions to this in the long term, but this is the easiest solution in the short term.
 
-# Detailed design
-[design]: #detailed-design
-
-- `nix-daemon` will be a separate executable that only links the nix libraries it needs.
-  \[At this time, those libraries are `libnixutil`, `libnixstore`, and `libnixrust`, but this is subject to change.\]
-
-- `nix-daemon` should never need to understand the expression language and depend  `libnixexpr`.
-
-# Examples and Interactions
-[examples-and-interactions]: #examples-and-interactions
 
 I certainly hope there are no interactions!
 One of the bad things we should seek to prevent with this is the daemon unintentionally growing dependencies on more of the code base.
@@ -106,21 +316,35 @@ One of the bad things we should seek to prevent with this is the daemon unintent
 # Drawbacks
 [drawbacks]: #drawbacks
 
-Installation is slightly bigger as the two binaries (`nix` and `nix-daemon`) have some redundancy.
-Build rules perhaps are slightly more complex as there are both separate and independent executables.
+Honestly, I think the biggest drawback will be that the Flake faction feels it is stuck doing some extra chores to appease the anti-Flake faction.
+
+I think the problem is because the anti-Flake faction seems weaker than it should be because it is unclear what we want --- and many of us are "stuck" on Nix 2.3.
+If we can rally around this compromise, we can also put in the bulk of work of implementation, making the peace offering of sorts, to pay for our continued existence as a full-fledged part of this project.
 
 # Alternatives
 [alternatives]: #alternatives
 
- - Do nothing.
+I really don't think there is alternative to this plan that doesn't leave a lot of people sad, demoralized, and angry.
+That is why I took the time to write this very long RFC.
 
- - Something more invasive, such as packaging the libraries and commands separately, or intending the libaries for widespread public consumption.
-   But I much rather save that for later, as such steps would be far more controversial.
+There a few variations, however:
+
+- Because `libfetchers` is also a layer violation of sorts (though `builtins.exec` is not a satisfactory generalize equivalent at this time), we could also make a `libstore + libexers`-only Nix too, sitting between the store+eval and store+eval+flakes Nixes.
 
 # Unresolved questions
 [unresolved]: #unresolved-questions
 
-No known unknowns.
+## Names
+
+Should we call all the binaries Nix because they compatible (either something is not recognized or it does the same thing).
+Or should we come up with new names?
+"Nix expression language" still deserves a new name regardless :).
+
+## Nixpkgs
+
+To what extent Nixpkgs would use flakes post stabilization is unresolved.
+I am less worried about that, because I don't think Nixpkgs can be split up very much if at all.
+If other Flakes depend on it, but it doesn't depend Flakes, there is no issue.
 
 # Future work
 [future]: #future-work
