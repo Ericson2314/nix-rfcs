@@ -195,7 +195,7 @@ Still, there is a no doubt some social engineering going on (I do not use that p
 
 Certainly Eelco has said trying to design with the general, Flake agnostic version can seem like an extra chore that he doesn't feel very motivated to do.
 The point of conventions are to solve problems for users, but also to help shepherd the community into using standard idioms.
-From the vantage point of the second, generalizing features to be flake-agnostic can be **actively harmful* not just effort without benefit, because it undermines the strength of the convention.
+From the vantage point of the second, generalizing features to be flake-agnostic can be **actively harmful** not just effort without benefit, because it undermines the strength of the convention.
 
 ## What to Do? Multiple Nixes
 
@@ -223,7 +223,7 @@ Remember, whether or not we do Flakes, we still mostly all want
  - Channels abolished (N.B. Anti-Flakers don't think channels necessarily need to be *replaced*, let alone replaced with something else in Nix itself.)
  - Unambiguous improvements to existing functionality like pure evaluation.
 
-To have a fair referendum, it is important the multiple Nixes are presented as genuine possible futures*, not just compatibility support for the past.
+To have a fair referendum, it is important the multiple Nixes are presented as genuine possible futures\*, not just compatibility support for the past.
 Only then can both factions feel their visions are respected, and schism averted.
 
 # Detailed design
